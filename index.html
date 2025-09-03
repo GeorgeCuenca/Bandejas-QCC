@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Control de Bandejas</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
+            color: #333;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .container {
+            background-color: white;
+            padding: 3rem 2.5rem;
+            border-radius: 1.5rem;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+            max-width: 90%;
+            width: 550px;
+            text-align: center;
+            border: 1px solid #e2e8f0;
+        }
+        h1 {
+            color: #2c5282;
+            font-size: 2.25rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 1rem;
+        }
+        p {
+            color: #718096;
+            margin-bottom: 2rem;
+            font-size: 1rem;
+        }
+        .form-group {
+            margin-bottom: 1.75rem;
+            text-align: left;
+        }
+        label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            color: #2d3748;
+        }
+        input, select {
+            width: 100%;
+            padding: 0.75rem;
+            border-radius: 0.75rem;
+            border: 1px solid #cbd5e0;
+            background-color: #f7fafc;
+            transition: all 0.3s ease;
+            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.05);
+        }
+        input:focus, select:focus {
+            outline: none;
+            border-color: #4299e1;
+            box-shadow: 0 0 0 4px rgba(66, 153, 225, 0.25);
+            background-color: white;
+        }
+        button {
+            width: 100%;
+            padding: 1rem;
+            border-radius: 1rem;
+            background-color: #3182ce;
+            background-image: linear-gradient(to right, #4299e1, #3182ce);
+            color: white;
+            font-weight: 700;
+            font-size: 1.125rem;
+            border: none;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4);
+            transition: all 0.3s ease;
+        }
+        button:hover:not(:disabled) {
+            box-shadow: 0 6px 20px rgba(59, 130, 246, 0.6);
+            transform: translateY(-2px);
+        }
+        button:active:not(:disabled) {
+            transform: translateY(0);
+            box-shadow: 0 2px 10px rgba(59, 130, 246, 0.3);
+        }
+        button:disabled {
+            background-image: none;
+            background-color: #92b8e3;
+            cursor: not-allowed;
+        }
+        .message-box {
+            margin-top: 1.5rem;
+            padding: 1.25rem;
+            border-radius: 0.75rem;
+            font-weight: 600;
+            color: white;
+            display: none;
+            animation: fadeIn 0.5s ease-out;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        }
+        .message-box.success {
+            background-color: #48bb78;
+        }
+        .message-box.error {
+            background-color: #f56565;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .user-id {
+            font-size: 0.875rem;
+            color: #718096;
+            margin-top: 2rem;
+            word-wrap: break-word;
+        }
+        .status-message {
+            margin-top: 1rem;
+            color: #4a5568;
+            font-style: italic;
+        }
+    </style>
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInWithCustomToken, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, addDoc, collection, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Firebase configuration
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+
+        let userId = null;
+        const saveButton = document.getElementById('saveButton');
+        const messageBox = document.getElementById('messageBox');
+        const statusMessage = document.getElementById('statusMessage');
+
+        // Function to show a message to the user
+        const showMessage = (text, type) => {
+            messageBox.textContent = text;
+            messageBox.className = `message-box ${type}`;
+            messageBox.style.display = 'block';
+        };
+
+        // Function to handle saving the record to Firestore
+        const saveRecord = async () => {
+            const persona = document.getElementById('persona').value;
+            const tienda = document.getElementById('tienda').value;
+            const movimiento = document.getElementById('movimiento').value;
+            const tipoBandeja = document.getElementById('tipoBandeja').value;
+            const cantidad = document.getElementById('cantidad').value;
+            
+            if (!persona || !tienda || !movimiento || !tipoBandeja || !cantidad) {
+                showMessage('Por favor, completa todos los campos.', 'error');
+                return;
+            }
+
+            // Show loading state
+            saveButton.textContent = 'Cargando...';
+            saveButton.disabled = true;
+
+            try {
+                const recordData = {
+                    persona,
+                    tienda,
+                    movimiento,
+                    tipoBandeja,
+                    cantidad: parseInt(cantidad, 10),
+                    timestamp: serverTimestamp(),
+                    userId: userId,
+                };
+                
+                const collectionPath = `/artifacts/${appId}/public/data/bandejas`;
+                await addDoc(collection(db, collectionPath), recordData);
+
+                showMessage('Registro guardado exitosamente.', 'success');
+                // Clear form fields
+                document.getElementById('persona').value = '';
+                document.getElementById('tienda').value = '';
+                document.getElementById('movimiento').value = '';
+                document.getElementById('tipoBandeja').value = '';
+                document.getElementById('cantidad').value = '';
+            } catch (error) {
+                console.error("Error al guardar el registro:", error);
+                showMessage('Error al guardar el registro. Intenta de nuevo.', 'error');
+            } finally {
+                // Reset button state
+                saveButton.textContent = 'Guardar Registro';
+                saveButton.disabled = false;
+            }
+        };
+
+        // Auth state listener
+        auth.onAuthStateChanged(user => {
+            if (user) {
+                userId = user.uid;
+                document.getElementById('userIdDisplay').textContent = `ID de usuario: ${userId}`;
+                statusMessage.textContent = 'Conectado. Puedes guardar registros.';
+                saveButton.disabled = false; // Enable button once authenticated
+            } else {
+                statusMessage.textContent = 'Error al conectar. Recarga la página.';
+                saveButton.disabled = true;
+            }
+        });
+
+        // Sign in anonymously or with custom token
+        const signIn = async () => {
+            try {
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (error) {
+                console.error("Error signing in:", error);
+                statusMessage.textContent = 'No se pudo iniciar sesión. Recarga la página.';
+                saveButton.disabled = true;
+            }
+        };
+
+        // Add event listener to the button after the DOM is loaded
+        document.addEventListener('DOMContentLoaded', () => {
+            saveButton.addEventListener('click', saveRecord);
+            statusMessage.textContent = 'Conectando a la base de datos...';
+            signIn();
+        });
+    </script>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen">
+
+    <div class="container">
+        <h1>📦 Control de Bandejas</h1>
+        <p>Registra el movimiento de bandejas de la tienda.</p>
+        
+        <div class="form-group">
+            <label for="persona">Nombre del que registra:</label>
+            <input type="text" id="persona" name="persona" placeholder="Ingresa tu nombre" class="rounded-lg shadow-sm">
+        </div>
+
+        <div class="form-group">
+            <label for="tienda">Selecciona tu tienda:</label>
+            <select id="tienda" name="tienda" class="rounded-lg shadow-sm">
+                <option value="" disabled selected>Selecciona una tienda</option>
+                <option value="ALFONSO UGARTE">ALFONSO UGARTE</option>
+                <option value="ARAMBURU">ARAMBURU</option>
+                <option value="AVIACION">AVIACION</option>
+                <option value="BARRANCO">BARRANCO</option>
+                <option value="BELLAVISTA">BELLAVISTA</option>
+                <option value="BEN 20">BEN 20</option>
+                <option value="BEN 49">BEN 49</option>
+                <option value="BOLIVAR">BOLIVAR</option>
+                <option value="BOULEVARD MAGDALENA">BOULEVARD MAGDALENA</option>
+                <option value="CAMACHO">CAMACHO</option>
+                <option value="CANADA">CANADA</option>
+                <option value="CHIMU">CHIMU</option>
+                <option value="CHORRILLOS">CHORRILLOS</option>
+                <option value="CIVICO">CIVICO</option>
+                <option value="COLLIQUE">COLLIQUE</option>
+                <option value="COMAS">COMAS</option>
+                <option value="ESPINAR">ESPINAR</option>
+                <option value="FAUCETT">FAUCETT</option>
+                <option value="FC PLAZA NORTE">FC PLAZA NORTE</option>
+                <option value="FOODTRUCK U DE LIMA">FOODTRUCK U DE LIMA</option>
+                <option value="ICA">ICA</option>
+                <option value="JESUS MARIA">JESUS MARIA</option>
+                <option value="JOCKEY">JOCKEY</option>
+                <option value="LAS FLORES">LAS FLORES</option>
+                <option value="LURIN">LURIN</option>
+                <option value="MAGDALENA">MAGDALENA</option>
+                <option value="MALL AVENTURA SJL">MALL AVENTURA SJL</option>
+                <option value="MALL SUR">MALL SUR</option>
+                <option value="MARINA">MARINA</option>
+                <option value="MEGA CHORRILLOS">MEGA CHORRILLOS</option>
+                <option value="MILITAR">MILITAR</option>
+                <option value="MINKA">MINKA</option>
+                <option value="MIOTTA">MIOTTA</option>
+                <option value="MOLINA">MOLINA</option>
+                <option value="OLIVOS">OLIVOS</option>
+                <option value="PALMERAS">PALMERAS</option>
+                <option value="PLAZA NORTE">PLAZA NORTE</option>
+                <option value="PLAZA VEA MIRAFLORES">PLAZA VEA MIRAFLORES</option>
+                <option value="PLAZA VEA VENTANILLA">PLAZA VEA VENTANILLA</option>
+                <option value="POLO">POLO</option>
+                <option value="PRO">PRO</option>
+                <option value="PROCERES">PROCERES</option>
+                <option value="PURUCHUCO">PURUCHUCO</option>
+                <option value="RAMBLA">RAMBLA</option>
+                <option value="REPSOL">REPSOL</option>
+                <option value="REX">REX</option>
+                <option value="ROYAL PLAZA">ROYAL PLAZA</option>
+                <option value="SAENZ PEÑA">SAENZ PEÑA</option>
+                <option value="SALAMANCA">SALAMANCA</option>
+                <option value="SALAVERRY">SALAVERRY</option>
+                <option value="SAN BORJA">SAN BORJA</option>
+                <option value="SAN MIGUEL">SAN MIGUEL</option>
+                <option value="STA ANITA">STA ANITA</option>
+                <option value="STA CLARA">STA CLARA</option>
+                <option value="TOMAS VALLE">TOMAS VALLE</option>
+                <option value="UCAYALI">UCAYALI</option>
+                <option value="VALLE HERMOSO">VALLE HERMOSO</option>
+                <option value="VILLA EL SALVADOR">VILLA EL SALVADOR</option>
+                <option value="VMT">VMT</option>
+            </select>
+        </div>
+        
+        <div class="form-group">
+            <label for="movimiento">Selecciona el tipo de movimiento:</label>
+            <select id="movimiento" name="movimiento" class="rounded-lg shadow-sm">
+                <option value="" disabled selected>Selecciona un movimiento</option>
+                <option value="Despacho a tienda">Despacho a tienda</option>
+                <option value="Devolución de tienda">Devolución de tienda</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="tipoBandeja">Escoger el color (bandeja):</label>
+            <select id="tipoBandeja" name="tipoBandeja" class="rounded-lg shadow-sm">
+                <option value="" disabled selected>Selecciona un color</option>
+                <option value="Ploma">Ploma</option>
+                <option value="Blanca">Blanca</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="cantidad">Ingresar la cantidad:</label>
+            <input type="number" id="cantidad" name="cantidad" placeholder="Cantidad de bandejas" class="rounded-lg shadow-sm" min="1">
+        </div>
+
+        <button id="saveButton" disabled>Guardar Registro</button>
+        <p id="statusMessage" class="status-message"></p>
+
+        <div id="messageBox" class="message-box" style="display:none;"></div>
+        <p id="userIdDisplay" class="user-id"></p>
+    </div>
+</body>
+</html>
